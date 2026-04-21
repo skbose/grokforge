@@ -1,0 +1,4 @@
+extends: ../../configs/base.yaml
+
+experiment: exp001_sft_baseline
+description: SFT baseline on synthetic (log, pattern) pairs

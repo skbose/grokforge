@@ -1,0 +1,4 @@
+extends: ../../configs/base.yaml
+
+experiment: exp002_grpo_apache
+description: GRPO with execution-based reward, Apache access logs only
