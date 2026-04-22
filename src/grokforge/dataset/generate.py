@@ -14,7 +14,7 @@ from typing import Callable, Iterable, Iterator
 
 from faker import Faker
 
-from src.dataset.parse_patterns import load_all_patterns
+from grokforge.dataset.parse_patterns import load_all_patterns
 
 fake = Faker()
 _rng = random.Random()

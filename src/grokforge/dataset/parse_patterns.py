@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 _NAME_RE = re.compile(r"^[A-Z0-9_]+$")
 _DEFAULT_PATTERNS_DIR = (
-    pathlib.Path(__file__).parents[2]
+    pathlib.Path(__file__).parents[3]
     / "data"
     / "raw"
     / "logstash-patterns-core"
