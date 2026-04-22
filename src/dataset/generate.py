@@ -1,5 +1,7 @@
 """Synthetic log generation using Faker + known Grok patterns."""
 
+from __future__ import annotations
+
 import argparse
 import dataclasses
 import json
@@ -15,6 +17,7 @@ from faker import Faker
 from src.dataset.parse_patterns import load_all_patterns
 
 fake = Faker()
+_rng = random.Random()
 
 # ---------------------------------------------------------------------------
 # Token types
@@ -31,11 +34,11 @@ class Ref:
 
 @dataclass
 class Alternation:
-    branches: list[list]  # list[list[Token]]
+    branches: list[list[Token]]
 
 @dataclass
 class Optional:
-    tokens: list  # list[Token]
+    tokens: list[Token]
 
 Token = Literal | Ref | Alternation | Optional
 
@@ -43,26 +46,23 @@ Token = Literal | Ref | Alternation | Optional
 # Primitive generators — leaf Grok pattern names mapped to Faker calls
 # ---------------------------------------------------------------------------
 
-def _g(fn: Callable[[], str]) -> Callable[[], str]:
-    return fn
-
 PRIMITIVE_GENERATORS: dict[str, Callable[[], str]] = {
     "IPV4":             lambda: fake.ipv4_public(),
     "IPV6":             lambda: fake.ipv6(),
-    "IP":               lambda: random.choice([fake.ipv4_public(), fake.ipv6()]),
+    "IP":               lambda: _rng.choice([fake.ipv4_public(), fake.ipv6()]),
     "HOSTNAME":         lambda: fake.hostname(),
-    "IPORHOST":         lambda: random.choice([fake.ipv4_public(), fake.hostname()]),
-    "HOSTPORT":         lambda: f"{fake.ipv4_public()}:{random.randint(1, 65535)}",
+    "IPORHOST":         lambda: _rng.choice([fake.ipv4_public(), fake.hostname()]),
+    "HOSTPORT":         lambda: f"{fake.ipv4_public()}:{_rng.randint(1, 65535)}",
     "USERNAME":         lambda: fake.user_name(),
     "USER":             lambda: fake.user_name(),
     "EMAILLOCALPART":   lambda: fake.user_name(),
     "EMAILADDRESS":     lambda: fake.email(),
-    "INT":              lambda: str(random.randint(-9999, 9999)),
-    "BASE10NUM":        lambda: str(random.randint(0, 9999)),
-    "NUMBER":           lambda: str(random.randint(0, 9999)),
-    "POSINT":           lambda: str(random.randint(1, 9999)),
-    "NONNEGINT":        lambda: str(random.randint(0, 9999)),
-    "BASE16NUM":        lambda: hex(random.randint(0, 0xFFFF)),
+    "INT":              lambda: str(_rng.randint(-9999, 9999)),
+    "BASE10NUM":        lambda: str(_rng.randint(0, 9999)),
+    "NUMBER":           lambda: str(_rng.randint(0, 9999)),
+    "POSINT":           lambda: str(_rng.randint(1, 9999)),
+    "NONNEGINT":        lambda: str(_rng.randint(0, 9999)),
+    "BASE16NUM":        lambda: hex(_rng.randint(0, 0xFFFF)),
     "WORD":             lambda: fake.word(),
     "NOTSPACE":         lambda: fake.slug(),
     "SPACE":            lambda: " ",
@@ -72,39 +72,39 @@ PRIMITIVE_GENERATORS: dict[str, Callable[[], str]] = {
     "QS":               lambda: f'"{fake.sentence().rstrip(".")}"',
     "UUID":             lambda: str(uuid.uuid4()),
     "MAC":              lambda: fake.mac_address(),
-    "CISCOMAC":         lambda: ".".join(f"{random.randint(0, 0xFFFF):04x}" for _ in range(3)),
-    "WINDOWSMAC":       lambda: "-".join(f"{random.randint(0, 0xFF):02X}" for _ in range(6)),
+    "CISCOMAC":         lambda: ".".join(f"{_rng.randint(0, 0xFFFF):04x}" for _ in range(3)),
+    "WINDOWSMAC":       lambda: "-".join(f"{_rng.randint(0, 0xFF):02X}" for _ in range(6)),
     "COMMONMAC":        lambda: fake.mac_address(),
     "MONTH":            lambda: fake.date_time_this_year().strftime("%b"),
-    "MONTHNUM":         lambda: f"{random.randint(1, 12):02d}",
-    "MONTHNUM2":        lambda: f"{random.randint(1, 12):02d}",
-    "MONTHDAY":         lambda: f"{random.randint(1, 28):02d}",
+    "MONTHNUM":         lambda: f"{_rng.randint(1, 12):02d}",
+    "MONTHNUM2":        lambda: f"{_rng.randint(1, 12):02d}",
+    "MONTHDAY":         lambda: f"{_rng.randint(1, 28):02d}",
     "DAY":              lambda: fake.date_time_this_year().strftime("%a"),
-    "YEAR":             lambda: str(random.randint(2020, 2026)),
-    "HOUR":             lambda: f"{random.randint(0, 23):02d}",
-    "MINUTE":           lambda: f"{random.randint(0, 59):02d}",
-    "SECOND":           lambda: f"{random.randint(0, 59):02d}",
+    "YEAR":             lambda: str(_rng.randint(2020, 2026)),
+    "HOUR":             lambda: f"{_rng.randint(0, 23):02d}",
+    "MINUTE":           lambda: f"{_rng.randint(0, 59):02d}",
+    "SECOND":           lambda: f"{_rng.randint(0, 59):02d}",
     "TIME":             lambda: fake.time(),
     "DATE_US":          lambda: fake.date_time_this_year().strftime("%m/%d/%y"),
     "DATE_EU":          lambda: fake.date_time_this_year().strftime("%d.%m.%y"),
     "DATESTAMP":        lambda: fake.date_time_this_year().strftime("%m/%d/%y %H:%M:%S"),
-    "TZ":               lambda: random.choice(["UTC", "EST", "PST", "CST", "GMT"]),
-    "ISO8601_TIMEZONE": lambda: random.choice(["+00:00", "-05:00", "+05:30", "Z"]),
+    "TZ":               lambda: _rng.choice(["UTC", "EST", "PST", "CST", "GMT"]),
+    "ISO8601_TIMEZONE": lambda: _rng.choice(["+00:00", "-05:00", "+05:30", "Z"]),
     "TIMESTAMP_ISO8601":lambda: fake.date_time_this_year().strftime("%Y-%m-%dT%H:%M:%S+00:00"),
     "HTTPDATE":         lambda: fake.date_time_this_year().strftime("%d/%b/%Y:%H:%M:%S +0000"),
     "SYSLOGTIMESTAMP":  lambda: fake.date_time_this_year().strftime("%b %e %H:%M:%S"),
-    "LOGLEVEL":         lambda: random.choice(["INFO", "WARN", "ERROR", "DEBUG", "TRACE", "FATAL"]),
-    "CRON_ACTION":      lambda: random.choice(["CMD", "BEGIN EDIT", "END EDIT", "MAIL", "STARTUP", "REPLACE"]),
-    "PROG":             lambda: random.choice(["sshd", "cron", "kernel", "systemd", "sudo", "dbus-daemon", "NetworkManager"]),
-    "URIPROTO":         lambda: random.choice(["http", "https", "ftp"]),
+    "LOGLEVEL":         lambda: _rng.choice(["INFO", "WARN", "ERROR", "DEBUG", "TRACE", "FATAL"]),
+    "CRON_ACTION":      lambda: _rng.choice(["CMD", "BEGIN EDIT", "END EDIT", "MAIL", "STARTUP", "REPLACE"]),
+    "PROG":             lambda: _rng.choice(["sshd", "cron", "kernel", "systemd", "sudo", "dbus-daemon", "NetworkManager"]),
+    "URIPROTO":         lambda: _rng.choice(["http", "https", "ftp"]),
     "URIPATH":          lambda: "/" + fake.uri_path(),
-    "URIPARAM":         lambda: "?" + "&".join(f"{fake.word()}={fake.word()}" for _ in range(random.randint(1, 3))),
+    "URIPARAM":         lambda: "?" + "&".join(f"{fake.word()}={fake.word()}" for _ in range(_rng.randint(1, 3))),
     "URIPATHPARAM":     lambda: "/" + fake.uri_path() + "?" + fake.word() + "=" + fake.word(),
     "URI":              lambda: fake.uri(),
     "PATH":             lambda: fake.file_path(),
     "UNIXPATH":         lambda: fake.file_path(),
-    "WINPATH":          lambda: "C:\\" + "\\".join(fake.words(nb=random.randint(1, 3))),
-    "TTY":              lambda: f"/dev/pts/{random.randint(0, 9)}",
+    "WINPATH":          lambda: "C:\\" + "\\".join(fake.words(nb=_rng.randint(1, 3))),
+    "TTY":              lambda: f"/dev/pts/{_rng.randint(0, 9)}",
 }
 
 # ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ def _find_group_end(s: str, start: int) -> int:
     depth = 0
     i = start
     while i < len(s):
-        if s[i] == "\\" :
+        if s[i] == "\\":
             i += 2
             continue
         if s[i] == "(":
@@ -169,7 +169,7 @@ def _tokenize_inner(s: str) -> list[Token]:
     i = 0
     literal_buf = ""
 
-    def flush_literal():
+    def flush_literal() -> None:
         nonlocal literal_buf
         if literal_buf:
             tokens.append(Literal(literal_buf))
@@ -179,7 +179,12 @@ def _tokenize_inner(s: str) -> list[Token]:
         # Pattern reference %{NAME} or %{NAME:field}
         if s[i] == "%" and i + 1 < len(s) and s[i + 1] == "{":
             flush_literal()
-            end = s.index("}", i + 2)
+            try:
+                end = s.index("}", i + 2)
+            except ValueError:
+                # Unclosed %{ — treat rest as literal
+                literal_buf += s[i:]
+                break
             inner = s[i + 2:end]
             if ":" in inner:
                 name, field = inner.split(":", 1)
@@ -198,7 +203,6 @@ def _tokenize_inner(s: str) -> list[Token]:
             if branches is not None:
                 branch_tokens = [tokenize(b) for b in branches]
                 if is_optional:
-                    # Treat as Optional(Alternation(...))
                     tokens.append(Optional([Alternation(branch_tokens)]))
                 else:
                     tokens.append(Alternation(branch_tokens))
@@ -210,11 +214,14 @@ def _tokenize_inner(s: str) -> list[Token]:
                     tokens.extend(inner_tokens)
             i = group_end + 1 + (1 if is_optional else 0)
 
-        # Character class [...] — skip, treat as generic WORD
+        # Character class [...] — treat as generic WORD
         elif s[i] == "[":
             flush_literal()
-            end = s.index("]", i + 1)
-            # Emit a placeholder that will be handled at generate time as WORD
+            try:
+                end = s.index("]", i + 1)
+            except ValueError:
+                # Unclosed [ — skip to end
+                break
             tokens.append(Ref("WORD", None))
             i = end + 1
 
@@ -261,7 +268,6 @@ def _expand_tokens(
                 expanded = tokenize(all_patterns[name])
                 result.extend(_expand_tokens(expanded, all_patterns, depth + 1))
             elif name in all_patterns:
-                # Pure-regex leaf not in PRIMITIVE_GENERATORS — treat as WORD
                 result.append(Ref("WORD", token.field_name))
             else:
                 result.append(Literal(""))
@@ -292,10 +298,10 @@ def _generate_tokens(tokens: list[Token]) -> str:
             gen = PRIMITIVE_GENERATORS.get(token.pattern_name)
             parts.append(gen() if gen else "")
         elif isinstance(token, Alternation):
-            branch = random.choice(token.branches)
+            branch = _rng.choice(token.branches)
             parts.append(_generate_tokens(branch))
         elif isinstance(token, Optional):
-            if random.random() < 0.5:
+            if _rng.random() < 0.5:
                 parts.append(_generate_tokens(token.tokens))
     return "".join(parts)
 
@@ -319,12 +325,12 @@ def _generate_tokens_with_pattern(tokens: list[Token]) -> tuple[str, str]:
             field = f":{token.field_name}" if token.field_name else ""
             pat_parts.append(f"%{{{token.pattern_name}{field}}}")
         elif isinstance(token, Alternation):
-            branch = random.choice(token.branches)
+            branch = _rng.choice(token.branches)
             log_frag, pat_frag = _generate_tokens_with_pattern(branch)
             log_parts.append(log_frag)
             pat_parts.append(pat_frag)
         elif isinstance(token, Optional):
-            if random.random() < 0.5:
+            if _rng.random() < 0.5:
                 log_frag, pat_frag = _generate_tokens_with_pattern(token.tokens)
                 log_parts.append(log_frag)
                 pat_parts.append(pat_frag)
@@ -378,8 +384,8 @@ def generate_samples(
     if missing:
         raise ValueError(f"Unknown pattern names: {missing}")
     if seed is not None:
+        _rng.seed(seed)
         fake.seed_instance(seed)
-        random.seed(seed)
     for i in range(count):
         name = names[i % len(names)]
         log, pattern = generate_log_and_pattern(name, all_patterns)
@@ -424,27 +430,27 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Error: unknown patterns: {missing}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate generator coverage: warn about any Ref leaves not in PRIMITIVE_GENERATORS
+    # Warn about any expanded primitive refs not covered by PRIMITIVE_GENERATORS
     uncovered: set[str] = set()
     for name in pattern_names:
-        raw = all_patterns[name]
-        expanded = _expand_tokens(tokenize(raw), all_patterns)
-        def _collect_refs(tokens):
-            for t in tokens:
-                if isinstance(t, Ref) and t.pattern_name not in PRIMITIVE_GENERATORS:
-                    uncovered.add(t.pattern_name)
-                elif isinstance(t, (Alternation,)):
-                    for b in t.branches:
-                        _collect_refs(b)
-                elif isinstance(t, Optional):
-                    _collect_refs(t.tokens)
-        _collect_refs(expanded)
+        if name in all_patterns:
+            expanded = _expand_tokens(tokenize(all_patterns[name]), all_patterns)
+            def _collect_refs(tokens: list[Token]) -> None:
+                for t in tokens:
+                    if isinstance(t, Ref) and t.pattern_name not in PRIMITIVE_GENERATORS:
+                        uncovered.add(t.pattern_name)
+                    elif isinstance(t, Alternation):
+                        for b in t.branches:
+                            _collect_refs(b)
+                    elif isinstance(t, Optional):
+                        _collect_refs(t.tokens)
+            _collect_refs(expanded)
     if uncovered:
         print(f"Warning: unmapped primitives (will emit empty string): {uncovered}", file=sys.stderr)
 
     out_path = pathlib.Path(args.out)
 
-    def _samples_with_progress():
+    def _samples_with_progress() -> Iterator[LogSample]:
         for i, sample in enumerate(generate_samples(args.count, all_patterns, pattern_names, args.seed)):
             if (i + 1) % 100 == 0:
                 print(f"\r{i + 1}/{args.count}", end="", file=sys.stderr)

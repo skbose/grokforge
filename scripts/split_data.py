@@ -14,7 +14,7 @@ def split(
     seed: int,
 ) -> None:
     lines = input_path.read_text(encoding="utf-8").splitlines()
-    lines = [l for l in lines if l.strip()]
+    lines = [line for line in lines if line.strip()]
 
     random.seed(seed)
     random.shuffle(lines)

@@ -3,14 +3,31 @@
 import argparse
 import pathlib
 
+import yaml
 from datasets import DatasetDict, load_dataset
 
 
+def _load_base_config() -> dict:
+    base = pathlib.Path(__file__).parent.parent / "configs" / "base.yaml"
+    if base.exists():
+        with base.open() as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 def main() -> None:
+    config = _load_base_config()
+    default_repo = config.get("data", {}).get("dataset_id")
+
     parser = argparse.ArgumentParser(description="Push dataset splits to HuggingFace Hub")
-    parser.add_argument("--repo",     required=True,              help="HF repo id, e.g. skbose/grokforge-v1")
-    parser.add_argument("--data-dir", default="data/generated",   help="Directory containing train/val/eval.jsonl")
-    parser.add_argument("--private",  action="store_true",        help="Create repo as private")
+    parser.add_argument(
+        "--repo",
+        default=default_repo,
+        required=default_repo is None,
+        help=f"HF repo id (default from configs/base.yaml: {default_repo})",
+    )
+    parser.add_argument("--data-dir", default="data/generated", help="Directory containing train/val/eval.jsonl")
+    parser.add_argument("--private",  action="store_true",      help="Create repo as private")
     args = parser.parse_args()
 
     data_dir = pathlib.Path(args.data_dir)
