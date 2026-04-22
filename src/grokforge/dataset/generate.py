@@ -164,6 +164,18 @@ def tokenize(s: str) -> list[Token]:
     return _tokenize_inner(s)
 
 
+def _skip_brace_quantifier(s: str, pos: int) -> int:
+    """If s[pos] starts a brace quantifier like {2} or {2,4}, return pos after it; else return pos."""
+    if pos < len(s) and s[pos] == "{":
+        try:
+            end = s.index("}", pos + 1)
+            if all(c.isdigit() or c == "," for c in s[pos + 1:end]):
+                return end + 1
+        except ValueError:
+            pass
+    return pos
+
+
 def _tokenize_inner(s: str) -> list[Token]:
     tokens: list[Token] = []
     i = 0
@@ -182,7 +194,6 @@ def _tokenize_inner(s: str) -> list[Token]:
             try:
                 end = s.index("}", i + 2)
             except ValueError:
-                # Unclosed %{ — treat rest as literal
                 literal_buf += s[i:]
                 break
             inner = s[i + 2:end]
@@ -214,21 +225,41 @@ def _tokenize_inner(s: str) -> list[Token]:
                     tokens.extend(inner_tokens)
             i = group_end + 1 + (1 if is_optional else 0)
 
-        # Character class [...] — treat as generic WORD
+        # Character class [...] — treat as generic WORD, consume trailing quantifier
         elif s[i] == "[":
             flush_literal()
             try:
                 end = s.index("]", i + 1)
             except ValueError:
-                # Unclosed [ — skip to end
                 break
             tokens.append(Ref("WORD", None))
-            i = end + 1
+            i = _skip_brace_quantifier(s, end + 1)
 
-        # Backslash escape — unescape to literal
+        # Backslash escape
         elif s[i] == "\\" and i + 1 < len(s):
-            literal_buf += s[i + 1]
-            i += 2
+            next_char = s[i + 1]
+            if next_char in ("w", "W"):
+                # \w / \W — word character class → WORD token
+                flush_literal()
+                tokens.append(Ref("WORD", None))
+                i = _skip_brace_quantifier(s, i + 2)
+            elif next_char in ("d", "D"):
+                # \d / \D — digit class → NONNEGINT token
+                flush_literal()
+                tokens.append(Ref("NONNEGINT", None))
+                i = _skip_brace_quantifier(s, i + 2)
+            elif next_char in ("s", "S"):
+                # \s / \S — whitespace class → SPACE token
+                flush_literal()
+                tokens.append(Ref("SPACE", None))
+                i = _skip_brace_quantifier(s, i + 2)
+            elif next_char in ("b", "B", "A", "Z"):
+                # Anchors — drop
+                i += 2
+            else:
+                # Escaped punctuation (\{, \}, \\, \[, \], \., etc.) → literal char
+                literal_buf += next_char
+                i += 2
 
         # Quantifiers and anchors — drop
         elif s[i] in ("+", "*", "?", "^", "$"):
